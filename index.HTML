@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>마케팅 도구 웹페이지</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- SheetJS for Excel import -->
+  <!-- SheetJS for Excel import/export -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
   <style>
     /* Sidebar */
@@ -286,6 +286,11 @@
                 <button id="listAddBtn" class="text-sm text-purple-600 font-semibold">
                   + 리스트 추가
                 </button>
+                <!-- ** START: Added Download Button ** -->
+                <button id="downloadReportBtn" class="text-sm text-blue-600 font-semibold">
+                  리포트 다운로드
+                </button>
+                <!-- ** END: Added Download Button ** -->
                 <input type="file" id="excelFileInput" accept=".xlsx,.xls" class="hidden"/>
               </div>
             </div>
@@ -460,7 +465,8 @@
               memoConfirmBtn       = document.getElementById('memoConfirmBtn'),
               listAddBtn           = document.getElementById('listAddBtn'),
               excelFileInput       = document.getElementById('excelFileInput'),
-              statusCountsContainer= document.getElementById('statusCounts'); // Reference the container for status items
+              statusCountsContainer= document.getElementById('statusCounts'), // Reference the container for status items
+              downloadReportBtn    = document.getElementById('downloadReportBtn'); // ** Added reference for download button **
 
 
         // Data Stores
@@ -683,16 +689,37 @@
             if (!name) { alert('파일명은 필수입니다.'); linkFileNameInput.focus(); return; }
             if (url && !url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('/')) { alert('유효한 URL 형식(http://, https:// 또는 / 로 시작)으로 입력해주세요.'); linkUrlInput.focus(); return; }
             const fileId = `link-${fileIdCounter++}`; let fileContent = url ? `<a href="${url}" target="_blank" class="underline text-blue-600">${name}</a>` : name;
-            const newElement = createFileElement(fileId, fileContent); upsertAssignedFile(fileId, name, 'N/A'); const placeholder = arrivalContainer.querySelector('#addArticlePlaceholder');
+            const newElement = createFileElement(fileId, fileContent); upsertAssignedFile(fileId, name, 'N/A'); // Note: Adding link always adds to table initially with folder N/A
+            const placeholder = arrivalContainer.querySelector('#addArticlePlaceholder');
              if (placeholder) { arrivalContainer.insertBefore(newElement, placeholder); } else { arrivalContainer.appendChild(newElement); }
             linkFileNameInput.value = ''; linkUrlInput.value = ''; linkInputSection.classList.add('hidden'); if (placeholder) { placeholder.classList.remove('hidden'); }
         });
 
         // ---- MEMO (Existing code - unchanged) ----
-        const savedMemo = localStorage.getItem('projectMemo') || '메모 없음';
-        memoTextDisplay.textContent = savedMemo;
-        memoEditBtn.addEventListener('click', () => { memoTextDisplay.classList.add('hidden'); memoEditBtn.classList.add('hidden'); memoTextArea.value = memoTextDisplay.textContent; memoEditSection.classList.remove('hidden'); memoTextArea.focus(); });
-        memoConfirmBtn.addEventListener('click', () => { const txt = memoTextArea.value.trim(); localStorage.setItem('projectMemo', txt); memoTextDisplay.textContent = txt; memoTextDisplay.classList.remove('hidden'); memoEditBtn.classList.remove('hidden'); memoEditSection.classList.add('hidden'); });
+        // ** Updated to use currentProjectName for unique memo storage **
+        function loadMemo(projectName) {
+            const savedMemo = localStorage.getItem(`${projectName}_memo`) || '메모 없음';
+            memoTextDisplay.textContent = savedMemo;
+            memoTextArea.value = savedMemo; // Also update textarea in case edit is cancelled
+        }
+        function saveMemo(projectName, text) {
+             localStorage.setItem(`${projectName}_memo`, text);
+        }
+        memoEditBtn.addEventListener('click', () => {
+             memoTextDisplay.classList.add('hidden');
+             memoEditBtn.classList.add('hidden');
+             memoTextArea.value = memoTextDisplay.textContent; // Ensure current value is in textarea
+             memoEditSection.classList.remove('hidden');
+             memoTextArea.focus();
+        });
+        memoConfirmBtn.addEventListener('click', () => {
+             const txt = memoTextArea.value.trim();
+             saveMemo(currentProjectName, txt); // Save with project name
+             memoTextDisplay.textContent = txt;
+             memoTextDisplay.classList.remove('hidden');
+             memoEditBtn.classList.remove('hidden');
+             memoEditSection.classList.add('hidden');
+        });
 
         // ---- 리스트 추가 -> Excel import (Modified to use ISO dates) ----
         listAddBtn.addEventListener('click', () => excelFileInput.click());
@@ -704,7 +731,12 @@
                     rows.forEach((r, index) => {
                         const fileId = `excel-${fileIdCounter++}`; const fileName = r['파일명'] || r['Name'] || `Imported ${index + 1}`; let lastModifiedDate = new Date(); const excelDate = r['최종수정날짜'] || r['Last Modified'];
                          if (excelDate) { if (excelDate instanceof Date) { lastModifiedDate = excelDate; } else { try { const parsed = new Date(String(excelDate).replace(/\./g, '-').replace('오후', 'PM').replace('오전', 'AM')); if (!isNaN(parsed)) lastModifiedDate = parsed; } catch (dateError) { /* Ignore */ } } }
-                        if (!assignedFiles.some(f => f.id === fileId)) { assignedFiles.push({ id: fileId, name: fileName, folder: r['폴더위치'] || r['Folder'] || 'N/A', lastModified: lastModifiedDate.toISOString(), lastEditor: r['마지막작성자'] || 'Import', email: r['메일주소'] || r['Email'] || '', contact: r['연락처'] || r['Contact'] || '', fee: r['원고료'] || r['Fee'] || '' }); }
+                        // Check if file with this *name* already exists from Excel import (avoid duplicate imports)
+                        if (!assignedFiles.some(f => f.name === fileName && f.id.startsWith('excel-'))) {
+                             assignedFiles.push({ id: fileId, name: fileName, folder: r['폴더위치'] || r['Folder'] || 'N/A', lastModified: lastModifiedDate.toISOString(), lastEditor: r['마지막작성자'] || 'Import', email: r['메일주소'] || r['Email'] || '', contact: r['연락처'] || r['Contact'] || '', fee: r['원고료'] || r['Fee'] || '' });
+                        } else {
+                            console.warn(`Skipping duplicate Excel import row: ${fileName}`);
+                        }
                     });
                     refreshTable(); excelFileInput.value = '';
                 } catch (error) { console.error("Error processing Excel file:", error); alert("엑셀 파일 처리 중 오류가 발생했습니다."); }
@@ -712,6 +744,69 @@
             reader.onerror = () => { alert("파일을 읽는 중 오류가 발생했습니다."); excelFileInput.value = ''; };
             reader.readAsBinaryString(file);
         });
+
+        // ---- ** START: Excel Report Download Logic ** ----
+        downloadReportBtn.addEventListener('click', () => {
+            if (assignedFiles.length === 0) {
+                alert('다운로드할 데이터가 없습니다.');
+                return;
+            }
+
+            // 1. Define Headers for the Excel file (Use Korean names)
+            const headers = [
+                '파일명', '폴더위치', '최종수정날짜', '마지막작성자', '메일주소', '연락처', '원고료'
+            ];
+
+            // 2. Prepare data rows matching the headers
+            const dataForSheet = assignedFiles.map(file => {
+                let displayDate = 'N/A';
+                if (file.lastModified) {
+                    try {
+                        // Use the same date formatting as the table for consistency
+                        displayDate = new Date(file.lastModified).toLocaleString('ko-KR', {
+                            year: 'numeric', month: '2-digit', day: '2-digit',
+                            hour: '2-digit', minute: '2-digit', second: '2-digit',
+                            hour12: true // Or false for 24-hour format
+                        }).replace(/\.$/,'').replace(/\. /g,'.');
+                    } catch (e) { /* Keep N/A */ }
+                }
+                return [
+                    file.name || 'N/A',
+                    file.folder || 'N/A',
+                    displayDate,
+                    file.lastEditor || 'N/A',
+                    file.email || '',
+                    file.contact || '',
+                    file.fee || ''
+                    // We exclude the checkbox and internal ID from the report
+                ];
+            });
+
+            // 3. Combine headers and data rows
+            const sheetData = [headers, ...dataForSheet];
+
+            // 4. Create a worksheet
+            const ws = XLSX.utils.aoa_to_sheet(sheetData);
+
+            // Optional: Adjust column widths (example)
+             ws['!cols'] = [ { wch: 25 }, { wch: 15 }, { wch: 20 }, { wch: 15 }, { wch: 25 }, { wch: 15 }, { wch: 10 } ]; // Adjust widths as needed
+
+            // 5. Create a workbook
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, '인플루언서 리포트'); // Name the sheet
+
+            // 6. Generate a filename (e.g., ProjectName_Report_YYYYMMDD.xlsx)
+            const today = new Date();
+            const dateString = `${today.getFullYear()}${(today.getMonth() + 1).toString().padStart(2, '0')}${today.getDate().toString().padStart(2, '0')}`;
+            // Use currentProjectName which should be available in this scope
+            const safeProjectName = (currentProjectName || '프로젝트').replace(/[^a-z0-9ㄱ-ㅎㅏ-ㅣ가-힣_-]/gi, '_'); // Sanitize name for filename
+            const fileName = `${safeProjectName}_리포트_${dateString}.xlsx`;
+
+            // 7. Trigger the download
+            XLSX.writeFile(wb, fileName);
+        });
+        // ---- ** END: Excel Report Download Logic ** ----
+
 
         // ---- Initialization ----
         function resetProjectData(projectName) {
@@ -724,19 +819,35 @@
              selectedFolder = document.querySelector('#folderContainer .folderItem.selected')?.dataset.folderName || '광고주';
              fileIdCounter = 100; currentSort = { key: null, direction: 'asc' };
              outreachTableBody.innerHTML = ''; folderFilesContainer.innerHTML = '';
-             arrivalContainer.innerHTML = ` <div class="fileItem" data-file-id="2">2번-임블리.txt</div> <div class="fileItem" data-file-id="4">4번-세수하연.txt</div> <div class="fileItem" data-file-id="5">5번-탈라칼라.txt</div> <div id="addArticlePlaceholder"> + 원고 추가 </div>`;
-             const newPlaceholder = document.getElementById('addArticlePlaceholder');
-             if(newPlaceholder) { newPlaceholder.addEventListener('click', () => { linkInputSection.classList.remove('hidden'); newPlaceholder.classList.add('hidden'); linkFileNameInput.focus(); }); }
-             else { console.error("Failed to re-attach listener to addArticlePlaceholder after reset."); }
-             arrivalContainer.querySelectorAll('.fileItem').forEach(enableDrag);
+
+             // Reset arrival container (clearing existing items)
+             arrivalContainer.innerHTML = '';
+             // Add the placeholder back
+             const placeholderDiv = document.createElement('div');
+             placeholderDiv.id = 'addArticlePlaceholder';
+             placeholderDiv.innerHTML = '+ 원고 추가';
+             placeholderDiv.className = 'border-2 border-dashed border-gray-400 text-gray-400 p-2 flex items-center justify-center cursor-pointer min-h-[40px] col-span-1'; // Re-apply classes
+             arrivalContainer.appendChild(placeholderDiv);
+             // Re-attach listener to the *new* placeholder
+             placeholderDiv.addEventListener('click', () => {
+                 linkInputSection.classList.remove('hidden');
+                 placeholderDiv.classList.add('hidden');
+                 linkFileNameInput.focus();
+             });
+             // Reset the link input section
              linkInputSection.classList.add('hidden'); linkFileNameInput.value = ''; linkUrlInput.value = '';
+
+             // Reset folder selection visually
              const currentFolderItems = folderContainer.querySelectorAll('.folderItem');
              currentFolderItems.forEach(f => f.classList.remove('selected'));
              const defaultSelectedFolder = folderContainer.querySelector(`.folderItem[data-folder-name="${selectedFolder}"]`);
              if (defaultSelectedFolder) { defaultSelectedFolder.classList.add('selected'); }
              else if (currentFolderItems.length > 0) { currentFolderItems[0].classList.add('selected'); selectedFolder = currentFolderItems[0].dataset.folderName; }
              currentFolderNameSpan.textContent = selectedFolder;
+
+             // Reset table sort indicators
              outreachTable.querySelectorAll('th .sort-indicator').forEach(ind => ind.textContent = '');
+
              // Reset status counts and goals visually
              folderKeys.forEach(key => {
                  const achievedEl = document.getElementById(`achieved-${key}`);
@@ -744,9 +855,11 @@
                  if (achievedEl) achievedEl.textContent = '0';
                  if (goalEl) goalEl.textContent = '-'; // Reset goal display
              });
-             // Reset memo
-             const initialMemo = localStorage.getItem('projectMemo') || '메모 없음';
-             memoTextDisplay.textContent = initialMemo; memoTextArea.value = initialMemo;
+             // Reset memo using the load function
+             loadMemo(currentProjectName);
+             memoEditSection.classList.add('hidden'); // Ensure edit section is hidden
+             memoTextDisplay.classList.remove('hidden');
+             memoEditBtn.classList.remove('hidden');
         }
 
         function initializeViewTwoState(projectName) {
@@ -755,14 +868,15 @@
              if (initialFolder) { selectFolder(initialFolder); }
              else { const currentFolderItems = folderContainer.querySelectorAll('.folderItem'); if (currentFolderItems.length > 0) { selectFolder(currentFolderItems[0]); } }
 
-             // Add sample data if view is visible and no specific project loaded yet (or for demo)
-             // This might need adjustment based on how real project data is loaded
-             if (assignedFiles.length === 0 && !viewTwo.classList.contains('hidden')) {
+             // Add sample data *only if* no specific project data is intended to be loaded later
+             // For a real application, you'd likely fetch project-specific data here instead
+             if (assignedFiles.length === 0) {
                  addSampleTableData();
              }
              currentSort.key = 'lastModified'; currentSort.direction = 'desc'; // Set initial sort
 
              loadGoals(currentProjectName); // Load goals for the current project
+             loadMemo(currentProjectName); // Load memo for the current project
              refreshTable(); // Refresh table (applies sort, updates counts)
 
              arrivalContainer.querySelectorAll('.fileItem').forEach(enableDrag);
@@ -775,8 +889,8 @@
              });
         }
 
-        // Initialize if viewTwo is already visible on page load (e.g., during development)
-        if (!viewTwo.classList.contains('hidden')) { initializeViewTwoState('DefaultProject'); } // Use a default name or handle appropriately
+        // Initialize if viewTwo is already visible on page load (e.g., during development/debugging)
+        // if (!viewTwo.classList.contains('hidden')) { initializeViewTwoState('DefaultProject'); } // Use a default name or handle appropriately
 
       }); // End DOMContentLoaded
     })();
