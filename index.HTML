@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>마케팅 도구 웹페이지</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- SheetJS for Excel import -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <style>
+    /* Sidebar */
+    .sidebar { width: 16rem; transition: width 0.3s ease-in-out; position: relative; }
+    .main-content { margin-left: 16rem; transition: margin-left 0.3s ease-in-out; flex: 1; }
+    /* Collapsed state */
+    body.sidebar-collapsed .sidebar { width: 4rem; }
+    body.sidebar-collapsed .main-content { margin-left: 4rem; }
+    body.sidebar-collapsed .sidebar .sidebar-text,
+    body.sidebar-collapsed .sidebar .text-4xl,
+    body.sidebar-collapsed .sidebar .text-sm,
+    body.sidebar-collapsed .sidebar button.text-pink-500 { display: none; }
+    body.sidebar-collapsed .sidebar { padding-left: 0.5rem; padding-right: 0.5rem; }
+    body.sidebar-collapsed .sidebar ul { padding-left: 0; padding-right: 0; }
+    body.sidebar-collapsed .sidebar li { justify-content: center; }
+    body.sidebar-collapsed .sidebar li span { display: none; }
+    body.sidebar-collapsed .sidebar .w-28 { width: 2.5rem; }
+    body.sidebar-collapsed .sidebar li::before { margin-right: 0; }
+    /* Toggle Button */
+    .sidebar-toggle-btn { position: absolute; top: 0.5rem; right: -12px; z-index: 50; background-color: white; border: 1px solid #e5e7eb; border-radius: 9999px; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06); transition: right 0.3s ease-in-out; }
+    .sidebar-toggle-btn:hover { background-color: #f3f4f6; }
+
+    /* Drop zone visual cue */
+    .drop-active { background-color: #e0f2fe !important; outline: 2px dashed #0284c7; }
+    /* File item style */
+    .fileItem { border: 1px solid #ccc; padding: 0.5rem; text-align: center; cursor: grab; font-size: 0.75rem; background-color: white; word-break: break-all; min-height: 40px; display: flex; align-items: center; justify-content: center; }
+    .fileItem a { text-decoration: underline; color: #2563eb; }
+    /* Folder item style */
+    .folderItem { border: 1px solid #ccc; padding: 0.5rem; border-radius: 0.25rem; cursor: pointer; text-align: center; display: flex; align-items: center; flex-shrink: 0; min-height: 40px; justify-content: center; font-size: 0.875rem; }
+    .folderItem.selected { background-color: #dbeafe; }
+    /* Add article placeholder */
+    #addArticlePlaceholder { border: 2px dashed #9ca3af; color: #9ca3af; padding: 0.5rem; display: flex; align-items: center; justify-content: center; cursor: pointer; min-height: 40px; grid-column: span 1; }
+    /* Folder container */
+    #folderContainer { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    /* Sortable table headers */
+    #outreachTable th.sortable { cursor: pointer; position: relative; }
+    #outreachTable th.sortable:hover { background-color: #e5e7eb; }
+    #outreachTable th .sort-indicator { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); font-size: 0.7rem; color: #6b7280; }
+    /* Adjust list style for icons */
+    .sidebar ul { list-style: none; padding: 0; }
+    .sidebar li { display: flex; align-items: center; gap: 0.5rem; }
+
+    /* --- New Status Counts Styles --- */
+    #statusCounts .status-item {
+        display: flex;
+        justify-content: space-between; /* Pushes count group to the right */
+        align-items: center;
+        padding: 0.1rem 0; /* Adjust vertical spacing */
+    }
+    #statusCounts .status-label {
+        color: #4b5563; /* text-gray-600 */
+        font-size: 0.875rem; /* text-sm */
+    }
+    #statusCounts .status-values {
+        font-size: 0.875rem; /* text-sm */
+        color: #3b82f6; /* text-blue-500 */
+        font-weight: 600; /* semibold */
+        text-align: right;
+    }
+    #statusCounts .status-goal {
+        cursor: pointer;
+        text-decoration: underline dotted; /* Indicate editable */
+         min-width: 20px; /* Ensure space for editing */
+         display: inline-block; /* Needed for min-width */
+    }
+     #statusCounts .status-goal:hover {
+         color: #1d4ed8; /* darker blue on hover */
+     }
+     /* Style for the input field when editing */
+     #statusCounts input.goal-input {
+        width: 40px; /* Adjust width as needed */
+        text-align: right;
+        border: 1px solid #ccc;
+        border-radius: 0.25rem;
+        padding: 0 0.25rem;
+        font-size: 0.875rem; /* text-sm */
+        -moz-appearance: textfield; /* Hide spinners in Firefox */
+     }
+     #statusCounts input.goal-input::-webkit-outer-spin-button,
+     #statusCounts input.goal-input::-webkit-inner-spin-button {
+        -webkit-appearance: none; /* Hide spinners in Chrome, Safari, Edge */
+        margin: 0;
+     }
+    /* --- End Status Counts Styles --- */
+
+  </style>
+</head>
+<body class="bg-white font-sans"> <!-- Initial state: expanded -->
+
+  <!-- 6페이지: 팝업 뷰 -->
+  <div id="viewOne" class="flex h-screen">
+    <aside id="sidebarViewOne" class="sidebar bg-[#f9fafb] border-r p-4 flex flex-col items-center relative">
+        <button id="toggleSidebarBtnViewOne" class="sidebar-toggle-btn">
+            <span class="arrow"><</span>
+        </button>
+      <img src="logo.png" alt="Logo" class="w-28 mb-4"/>
+      <div class="sidebar-text text-sm text-gray-500 mb-1">진행중인 캠페인</div>
+      <div class="text-4xl text-blue-600 font-bold mb-2">3</div>
+      <button class="sidebar-text text-pink-500 font-semibold mb-4">캠페인 생성</button>
+      <ul class="text-left space-y-2 w-full px-4">
+        <li>📁<span class="sidebar-text"> 나의 캠페인</span></li>
+        <li>📊<span class="sidebar-text"> 마케팅 업무 도구</span></li>
+        <li>🔔<span class="sidebar-text"> 알림 </span><span class="ml-2 text-blue-400 font-semibold sidebar-text">3</span></li>
+      </ul>
+    </aside>
+    <main id="mainContentViewOne" class="main-content p-6 relative">
+      <button id="openModalBtn"
+              class="mb-4 px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded text-sm font-medium">
+        + 새 프로젝트 생성
+      </button>
+      <div id="modalOverlay"
+           class="fixed inset-0 bg-gray-800 bg-opacity-50 flex items-center justify-center hidden">
+        <div class="bg-white rounded-lg shadow-lg w-96 mx-4">
+          <div class="flex justify-between items-center border-b px-4 py-2">
+            <h2 class="text-lg font-semibold">새 프로젝트 생성</h2>
+            <button id="closeModalBtn" class="text-gray-500 hover:text-gray-700">×</button>
+          </div>
+          <form id="createProjectForm" class="p-4 space-y-4 text-sm">
+            <div>
+              <label class="block mb-1 font-medium">프로젝트명 <span class="text-red-500">*</span></label>
+              <input id="projectNameInput" type="text" required placeholder="프로젝트명을 입력하세요"
+                     class="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300"/>
+            </div>
+            <div>
+              <label class="block mb-1 font-medium">캠페인 기간</label>
+              <div class="flex space-x-2">
+                <input id="dateStartInput" type="date"
+                       class="flex-1 border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300"/>
+                <span class="self-center">~</span>
+                <input id="dateEndInput" type="date"
+                       class="flex-1 border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300"/>
+              </div>
+            </div>
+            <div>
+              <label class="block mb-1 font-medium">목표 개수</label>
+              <input id="countGoalInput" type="number" min="0"
+                     placeholder="목표 개수를 입력하세요"
+                     class="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300"/>
+            </div>
+            <div class="flex justify-end space-x-2 pt-2">
+              <button type="button" id="cancelFormBtn"
+                      class="px-4 py-2 border rounded hover:bg-gray-100">취소</button>
+              <button type="submit"
+                      class="px-4 py-2 bg-black text-white rounded hover:bg-gray-900">생성하기</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- 7페이지: 상세 뷰 -->
+  <div id="viewTwo" class="hidden flex h-screen overflow-y-auto">
+    <aside id="sidebarViewTwo" class="sidebar bg-[#f9fafb] border-r p-4 flex flex-col items-center relative">
+        <button id="toggleSidebarBtnViewTwo" class="sidebar-toggle-btn">
+            <span class="arrow"><</span>
+        </button>
+      <img src="logo.png" alt="Logo" class="w-28 mb-4"/>
+      <div class="sidebar-text text-sm text-gray-500 mb-1">진행중인 캠페인</div>
+      <div class="text-4xl text-blue-600 font-bold mb-2">3</div>
+      <button class="sidebar-text text-pink-500 font-semibold mb-4">캠페인 생성</button>
+      <ul class="text-left space-y-2 w-full px-4">
+        <li class="text-red-600 font-semibold">📁<span class="sidebar-text"> 나의 캠페인</span></li>
+        <li>📊<span class="sidebar-text"> 마케팅 업무 도구</span></li>
+        <li>🔔<span class="sidebar-text"> 알림 </span><span class="ml-2 text-blue-400 font-semibold sidebar-text">3</span></li>
+      </ul>
+    </aside>
+
+    <main id="mainContentViewTwo" class="main-content p-4 space-y-6">
+      <!-- HEADER -->
+      <div class="border-t-4 border-yellow-300"></div>
+      <div class="flex justify-between items-center border-b-2 border-blue-600 pb-2">
+        <div class="flex space-x-6 text-sm font-semibold">
+          <span id="projectTabTitle" class="text-red-600 border-b-2 border-red-600">—</span>
+          <span>존슨앤드존슨</span>
+          <span>보전협회</span>
+          <span>하이트진로</span>
+        </div>
+        <div class="flex items-center space-x-6 text-sm font-semibold">
+          <span class="text-purple-600">데시보드</span>
+          <span>공지사항</span>
+          <button id="goBackBtn" class="text-sm text-gray-600 hover:text-gray-800">← 뒤로 가기</button>
+        </div>
+      </div>
+
+      <div class="flex gap-4">
+        <!-- 좌측: 기간·목표·MEMO + 테이블 -->
+        <div class="w-1/2 space-y-4">
+          <!-- 기간·목표·MEMO -->
+          <section class="flex gap-4">
+            <div class="flex-1 border border-blue-300 p-4 rounded">
+              <div class="font-bold mb-2">
+                기간 : <span id="displayPeriod">—</span>
+                 | 
+                목표 개수: <span id="displayGoal">—</span>
+              </div>
+              <!-- Updated status counts section -->
+              <div id="statusCounts" class="space-y-1 mt-2">
+                <div class="status-item">
+                    <span class="status-label">리스트업</span>
+                    <span class="status-values">
+                        <span class="status-achieved" id="achieved-listup">0</span> /
+                        <span class="status-goal" id="goal-listup" data-status-key="listup">-</span>
+                    </span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">가섭외응답자</span>
+                    <span class="status-values">
+                        <span class="status-achieved" id="achieved-gaseobwae">0</span> /
+                        <span class="status-goal" id="goal-gaseobwae" data-status-key="gaseobwae">-</span>
+                    </span>
+                </div>
+                 <div class="status-item">
+                    <span class="status-label">확정섭외</span>
+                    <span class="status-values">
+                        <span class="status-achieved" id="achieved-confirmed">0</span> /
+                        <span class="status-goal" id="goal-confirmed" data-status-key="confirmed">-</span>
+                    </span>
+                </div>
+                 <div class="status-item">
+                    <span class="status-label">블로그</span>
+                    <span class="status-values">
+                        <span class="status-achieved" id="achieved-blog">0</span> /
+                        <span class="status-goal" id="goal-blog" data-status-key="blog">-</span>
+                    </span>
+                </div>
+                 <div class="status-item">
+                    <span class="status-label">마케터</span>
+                    <span class="status-values">
+                        <span class="status-achieved" id="achieved-marketer">0</span> /
+                        <span class="status-goal" id="goal-marketer" data-status-key="marketer">-</span>
+                    </span>
+                </div>
+                 <div class="status-item">
+                    <span class="status-label">광고주</span>
+                    <span class="status-values">
+                        <span class="status-achieved" id="achieved-client">0</span> /
+                        <span class="status-goal" id="goal-client" data-status-key="client">-</span>
+                    </span>
+                </div>
+                 <div class="status-item">
+                    <span class="status-label">보고서</span>
+                    <span class="status-values">
+                        <span class="status-achieved" id="achieved-report">0</span> /
+                        <span class="status-goal" id="goal-report" data-status-key="report">-</span>
+                    </span>
+                </div>
+                 <div class="status-item">
+                    <span class="status-label">정산 완료</span>
+                    <span class="status-values">
+                        <span class="status-achieved" id="achieved-settled">0</span> /
+                        <span class="status-goal" id="goal-settled" data-status-key="settled">-</span>
+                    </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- MEMO -->
+            <div class="w-1/3 border border-gray-300 p-4 rounded text-center">
+              <div class="font-semibold text-lg">MEMO</div>
+              <div id="memoTextDisplay" class="mt-2 text-sm"></div>
+              <div id="memoEditSection" class="mt-2 hidden">
+                <textarea id="memoTextArea"
+                          class="w-full border rounded p-2 text-sm"
+                          rows="3"></textarea>
+                <button id="memoConfirmBtn"
+                        class="mt-2 px-4 py-1 bg-blue-600 text-white rounded">확인</button>
+              </div>
+              <button id="memoEditBtn" class="mt-2 text-sm text-blue-500 underline">수정</button>
+            </div>
+          </section>
+
+          <!-- 리스트업 + Excel import -->
+          <section class="border border-blue-300 p-4 rounded overflow-x-auto">
+            <div class="flex justify-between items-center mb-2">
+              <h3 class="font-bold">인플루언서 관리</h3>
+              <div class="flex space-x-2">
+                <button id="listAddBtn" class="text-sm text-purple-600 font-semibold">
+                  + 리스트 추가
+                </button>
+                <input type="file" id="excelFileInput" accept=".xlsx,.xls" class="hidden"/>
+              </div>
+            </div>
+            <table id="outreachTable" class="w-full text-xs table-auto border">
+              <thead class="bg-gray-100 text-left">
+                <tr>
+                  <th class="p-2">체크</th>
+                  <th class="p-2 sortable" data-sort-key="name">파일명<span class="sort-indicator"></span></th>
+                  <th class="p-2 sortable" data-sort-key="folder">폴더위치<span class="sort-indicator"></span></th>
+                  <th class="p-2 sortable" data-sort-key="lastModified">최종수정날짜<span class="sort-indicator"></span></th>
+                  <th class="p-2 sortable" data-sort-key="lastEditor">마지막작성자<span class="sort-indicator"></span></th>
+                  <th class="p-2 sortable" data-sort-key="email">메일주소<span class="sort-indicator"></span></th>
+                  <th class="p-2 sortable" data-sort-key="contact">연락처<span class="sort-indicator"></span></th>
+                  <th class="p-2 sortable" data-sort-key="fee">원고료<span class="sort-indicator"></span></th>
+                </tr>
+              </thead>
+              <tbody id="outreachTableBody"></tbody>
+            </table>
+          </section>
+        </div>
+
+        <!-- 우측: 도착한 원고 + 폴더 + 업무중 -->
+        <div class="w-1/2 space-y-4">
+          <!-- 도착한 원고 -->
+          <section class="border border-blue-300 p-4 rounded">
+            <h3 class="font-bold mb-2">도착한 원고</h3>
+            <div id="linkInputSection" class="hidden mb-2 flex space-x-2 items-center">
+              <input id="linkFileNameInput" type="text" placeholder="파일명 입력"
+                     class="flex-1 border rounded px-2 py-1 text-sm h-8"/>
+              <input id="linkUrlInput" type="url" placeholder="하이퍼링크 (선택)"
+                     class="flex-1 border rounded px-2 py-1 text-sm h-8"/>
+              <button id="saveLinkButton"
+                      class="px-3 py-1 bg-blue-600 text-white rounded text-sm h-8">저장</button>
+              <button id="cancelLinkButton" type="button"
+                      class="px-3 py-1 bg-gray-300 text-black rounded text-sm h-8">취소</button>
+            </div>
+            <div id="arrivalContainer"
+                 class="grid grid-cols-5 gap-2 min-h-[80px] bg-white p-2 border rounded">
+              <div class="fileItem" data-file-id="2">2번-임블리.txt</div>
+              <div class="fileItem" data-file-id="4">4번-세수하연.txt</div>
+              <div class="fileItem" data-file-id="5">5번-탈라칼라.txt</div>
+              <div id="addArticlePlaceholder">
+                + 원고 추가
+              </div>
+            </div>
+          </section>
+
+          <!-- 폴더 선택 -->
+          <section class="border border-blue-300 p-4 rounded">
+            <h3 class="font-bold mb-2">원고 분류</h3>
+            <div id="folderContainer">
+              <div class="folderItem" data-folder-name="리스트업">
+                <span>리스트업</span>
+              </div>
+              <div class="folderItem" data-folder-name="가섭외응답자">
+                 <span>가섭외응답자</span>
+              </div>
+              <div class="folderItem" data-folder-name="확정섭외">
+                 <span>확정섭외</span>
+              </div>
+              <div class="folderItem" data-folder-name="블로그">
+                 <span>블로그</span>
+              </div>
+              <div class="folderItem" data-folder-name="마케터">
+                 <span>마케터</span>
+              </div>
+              <div class="folderItem selected" data-folder-name="광고주">
+                 <span>광고주</span>
+              </div>
+              <div class="folderItem" data-folder-name="보고서">
+                 <span>보고서</span>
+              </div>
+              <div class="folderItem" data-folder-name="정산 완료">
+                 <span>정산 완료</span>
+              </div>
+            </div>
+            <div id="folderSelectionContainer" class="hidden"></div>
+          </section>
+
+          <!-- 폴더 내 파일 (업무중) -->
+          <section class="border border-blue-300 p-4 rounded">
+            <h3 class="font-bold mb-2">업무중 (<span id="currentFolderName">광고주</span>)</h3>
+            <div id="folderFilesContainer" class="grid grid-cols-5 gap-2 min-h-[80px] bg-white p-2 border rounded">
+              <!-- Files from the selected folder will appear here -->
+            </div>
+          </section>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    (function(){
+      document.addEventListener('DOMContentLoaded', () => {
+        // --- Sidebar Toggle Logic ---
+        const toggleButtons = document.querySelectorAll('.sidebar-toggle-btn');
+        toggleButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                document.body.classList.toggle('sidebar-collapsed');
+                const arrow = button.querySelector('.arrow');
+                if (arrow) { arrow.innerHTML = document.body.classList.contains('sidebar-collapsed') ? '>' : '<'; }
+            });
+        });
+        // --- End Sidebar Toggle Logic ---
+
+
+        // --- Existing View & Modal Control Code ---
+        const openModalBtn      = document.getElementById('openModalBtn'),
+              modalOverlay      = document.getElementById('modalOverlay'),
+              closeModalBtn     = document.getElementById('closeModalBtn'),
+              cancelFormBtn     = document.getElementById('cancelFormBtn'),
+              createForm        = document.getElementById('createProjectForm'),
+              viewOne           = document.getElementById('viewOne'),
+              viewTwo           = document.getElementById('viewTwo'),
+              projectNameInput  = document.getElementById('projectNameInput'),
+              dateStartInput    = document.getElementById('dateStartInput'),
+              dateEndInput      = document.getElementById('dateEndInput'),
+              countGoalInput    = document.getElementById('countGoalInput'), // This is the *overall* goal input from the modal
+              projectTabTitle   = document.getElementById('projectTabTitle'),
+              displayPeriod     = document.getElementById('displayPeriod'),
+              displayGoal       = document.getElementById('displayGoal'), // This displays the *overall* goal
+              goBackBtn         = document.getElementById('goBackBtn');
+
+        openModalBtn.addEventListener('click', ()=> modalOverlay.classList.remove('hidden'));
+        closeModalBtn.addEventListener('click', ()=> modalOverlay.classList.add('hidden'));
+        cancelFormBtn.addEventListener('click', ()=> modalOverlay.classList.add('hidden'));
+        createForm.addEventListener('submit', e => {
+          e.preventDefault();
+          const currentProjectName = projectNameInput.value.trim(); // Get project name
+          if (!currentProjectName) {
+              alert('프로젝트명은 필수입니다.');
+              return;
+          }
+          modalOverlay.classList.add('hidden');
+          viewOne.classList.add('hidden');
+          viewTwo.classList.remove('hidden');
+          resetProjectData(currentProjectName); // Pass project name to reset/load data
+          projectTabTitle.textContent = currentProjectName;
+           const startDate = dateStartInput.value ? new Date(dateStartInput.value).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit'}).replace(/\.$/,'').replace(/\. /g,'.') : '-';
+           const endDate = dateEndInput.value ? new Date(dateEndInput.value).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit'}).replace(/\.$/,'').replace(/\. /g,'.') : '-';
+           displayPeriod.textContent = `${startDate} ~ ${endDate}`;
+          displayGoal.textContent = countGoalInput.value || '-'; // Update overall goal display
+          initializeViewTwoState(currentProjectName); // Pass project name
+        });
+        goBackBtn.addEventListener('click', ()=> {
+          viewTwo.classList.add('hidden');
+          viewOne.classList.remove('hidden');
+        });
+        // --- END: Existing View & Modal Control Code ---
+
+
+        // ---- START: View Two Specific Logic ----
+
+        // 요소 참조
+        const arrivalContainer     = document.getElementById('arrivalContainer'),
+              addArticlePlaceholder= document.getElementById('addArticlePlaceholder'),
+              linkInputSection     = document.getElementById('linkInputSection'),
+              linkFileNameInput    = document.getElementById('linkFileNameInput'),
+              linkUrlInput         = document.getElementById('linkUrlInput'),
+              saveLinkButton       = document.getElementById('saveLinkButton'),
+              cancelLinkButton     = document.getElementById('cancelLinkButton'),
+              folderContainer      = document.getElementById('folderContainer'),
+              folderItems          = folderContainer.querySelectorAll('.folderItem'),
+              folderFilesContainer = document.getElementById('folderFilesContainer'),
+              currentFolderNameSpan= document.getElementById('currentFolderName'),
+              outreachTable        = document.getElementById('outreachTable'),
+              outreachTableBody    = document.getElementById('outreachTableBody'),
+              memoTextDisplay      = document.getElementById('memoTextDisplay'),
+              memoEditBtn          = document.getElementById('memoEditBtn'),
+              memoEditSection      = document.getElementById('memoEditSection'),
+              memoTextArea         = document.getElementById('memoTextArea'),
+              memoConfirmBtn       = document.getElementById('memoConfirmBtn'),
+              listAddBtn           = document.getElementById('listAddBtn'),
+              excelFileInput       = document.getElementById('excelFileInput'),
+              statusCountsContainer= document.getElementById('statusCounts'); // Reference the container for status items
+
+
+        // Data Stores
+        let currentProjectName = ''; // Store the currently active project name
+        let assignedFiles = [];
+        const folderKeys = [ // Define keys for easier iteration and mapping
+            'listup', 'gaseobwae', 'confirmed', 'blog',
+            'marketer', 'client', 'report', 'settled'
+        ];
+        const folderNameMap = { // Map keys to display/data names
+            'listup': '리스트업',
+            'gaseobwae': '가섭외응답자',
+            'confirmed': '확정섭외',
+            'blog': '블로그',
+            'marketer': '마케터',
+            'client': '광고주',
+            'report': '보고서',
+            'settled': '정산 완료'
+        };
+        let folderContents = {}; // Initialize dynamically based on map
+        Object.values(folderNameMap).forEach(name => { folderContents[name] = []; });
+
+        let selectedFolder = document.querySelector('#folderContainer .folderItem.selected')?.dataset.folderName || '광고주';
+        let fileIdCounter = 100;
+        let currentSort = { key: null, direction: 'asc' };
+
+        // ---- Drag & Drop Helpers (unchanged) ----
+        function enableDrag(el) {
+          el.draggable = true; el.classList.add('cursor-grab');
+          el.addEventListener('dragstart', ev => {
+            const fileId = el.dataset.fileId || el.textContent.trim(); const fileContent = el.innerHTML; const sourceContainerId = el.closest('[id]').id;
+            ev.dataTransfer.setData('text/plain', fileId); ev.dataTransfer.setData('text/html', fileContent); ev.dataTransfer.setData('sourceContainerId', sourceContainerId);
+            ev.dataTransfer.effectAllowed = 'move'; el.classList.add('opacity-50');
+          });
+          el.addEventListener('dragend', ev => { el.classList.remove('opacity-50'); el.classList.remove('cursor-grab'); });
+        }
+        function enableDrop(el, dropHandler) {
+          el.addEventListener('dragover', ev => { ev.preventDefault(); el.classList.add('drop-active'); ev.dataTransfer.dropEffect = 'move'; });
+          el.addEventListener('dragleave', ev => { el.classList.remove('drop-active'); });
+          el.addEventListener('drop', ev => {
+             ev.preventDefault(); el.classList.remove('drop-active');
+             const fileId = ev.dataTransfer.getData('text/plain'); const fileContent = ev.dataTransfer.getData('text/html'); const sourceContainerId = ev.dataTransfer.getData('sourceContainerId');
+             dropHandler(fileId, fileContent, sourceContainerId, el);
+          });
+        }
+
+        // ---- File & Folder Management Functions (unchanged logic) ----
+        function createFileElement(fileId, fileContent) { const div = document.createElement('div'); div.className = 'fileItem'; div.dataset.fileId = fileId; div.innerHTML = fileContent; enableDrag(div); return div; }
+        function renderFolderContents(folderName) { folderFilesContainer.innerHTML = ''; const files = folderContents[folderName] || []; files.forEach(fileData => { const fileElement = createFileElement(fileData.id, fileData.content); folderFilesContainer.appendChild(fileElement); }); currentFolderNameSpan.textContent = folderName; }
+        function selectFolder(folderElement) { const currentFolderItems = folderContainer.querySelectorAll('.folderItem'); currentFolderItems.forEach(f => f.classList.remove('selected')); folderElement.classList.add('selected'); selectedFolder = folderElement.dataset.folderName; renderFolderContents(selectedFolder); }
+        function findFileElementById(container, fileId) { return container.querySelector(`[data-file-id="${fileId}"]`) || Array.from(container.querySelectorAll('.fileItem')).find(el => el.textContent.trim() === fileId); }
+        function removeFileFromFolders(fileId) { for (const folderName in folderContents) { if (folderContents[folderName]) { const index = folderContents[folderName].findIndex(f => f.id === fileId); if (index > -1) { folderContents[folderName].splice(index, 1); return folderName; } } } return null; }
+        function addFileToFolder(fileId, fileContent, folderName) { if (!folderContents[folderName]) { folderContents[folderName] = []; console.warn(`Created new folder in data store: "${folderName}"`); } if (!folderContents[folderName].some(f => f.id === fileId)) { folderContents[folderName].push({ id: fileId, content: fileContent }); } }
+
+        // ---- Status Count & Goal Update ----
+        function updateStatusCounts() {
+            const counts = {};
+            folderKeys.forEach(key => counts[key] = 0); // Initialize counts
+
+            assignedFiles.forEach(file => {
+                const folderKey = Object.keys(folderNameMap).find(key => folderNameMap[key] === file.folder);
+                if (folderKey && counts.hasOwnProperty(folderKey)) {
+                    counts[folderKey]++;
+                }
+            });
+
+            // Update achieved values in the DOM
+            folderKeys.forEach(key => {
+                const achievedEl = document.getElementById(`achieved-${key}`);
+                if (achievedEl) {
+                    achievedEl.textContent = counts[key];
+                }
+            });
+        }
+
+        function loadGoals(projectName) {
+             if (!projectName) return;
+             folderKeys.forEach(key => {
+                 const goalEl = document.getElementById(`goal-${key}`);
+                 if (goalEl) {
+                     const savedGoal = localStorage.getItem(`${projectName}_goal_${key}`) ?? '-'; // Default to '-'
+                     goalEl.textContent = savedGoal;
+                 }
+             });
+         }
+
+         function saveGoal(projectName, statusKey, value) {
+             if (!projectName || !statusKey) return;
+             const goalValue = parseInt(value, 10);
+             // Save only if it's a non-negative number
+             if (!isNaN(goalValue) && goalValue >= 0) {
+                 localStorage.setItem(`${projectName}_goal_${statusKey}`, goalValue);
+                 return goalValue; // Return the saved number
+             } else {
+                 // If input is invalid or empty, remove from storage or save default like '-'
+                 localStorage.removeItem(`${projectName}_goal_${statusKey}`);
+                 //alert("유효한 숫자 목표값을 입력하세요 (0 이상).");
+                 return '-'; // Return default display value
+             }
+         }
+
+         function makeGoalEditable(spanElement) {
+            const currentGoal = spanElement.textContent;
+            const statusKey = spanElement.dataset.statusKey;
+
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.min = '0';
+            input.className = 'goal-input';
+            input.value = (currentGoal === '-' || isNaN(parseInt(currentGoal))) ? '' : currentGoal; // Set empty if default or NaN
+
+            spanElement.replaceWith(input);
+            input.focus();
+            input.select(); // Select text for easy replacement
+
+            const saveAndReplace = () => {
+                const newGoal = saveGoal(currentProjectName, statusKey, input.value);
+                const newSpan = document.createElement('span');
+                newSpan.className = 'status-goal';
+                newSpan.id = `goal-${statusKey}`;
+                newSpan.dataset.statusKey = statusKey;
+                newSpan.textContent = newGoal;
+                newSpan.addEventListener('click', () => makeGoalEditable(newSpan)); // Re-attach listener
+                input.replaceWith(newSpan);
+            };
+
+            input.addEventListener('blur', saveAndReplace);
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault(); // Prevent form submission if any
+                    saveAndReplace();
+                } else if (e.key === 'Escape') {
+                    // Restore original span without saving
+                     const originalSpan = document.createElement('span');
+                     originalSpan.className = 'status-goal';
+                     originalSpan.id = `goal-${statusKey}`;
+                     originalSpan.dataset.statusKey = statusKey;
+                     originalSpan.textContent = currentGoal; // Restore original text
+                     originalSpan.addEventListener('click', () => makeGoalEditable(originalSpan));
+                     input.replaceWith(originalSpan);
+                }
+            });
+        }
+
+
+        // ---- Table Management & Sorting Functions ----
+        function refreshTable(){
+            if (currentSort.key) {
+                assignedFiles.sort((a, b) => {
+                    let valA = a[currentSort.key] ?? ''; let valB = b[currentSort.key] ?? '';
+                    if (currentSort.key === 'lastModified') { valA = new Date(valA); valB = new Date(valB); if (isNaN(valA)) valA = 0; if (isNaN(valB)) valB = 0; }
+                    else if (currentSort.key === 'fee') { valA = parseFloat(String(valA).replace(/[^0-9.-]+/g,"")) || 0; valB = parseFloat(String(valB).replace(/[^0-9.-]+/g,"")) || 0; }
+                    else { valA = String(valA); valB = String(valB); return currentSort.direction === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA); }
+                    if (valA < valB) return currentSort.direction === 'asc' ? -1 : 1;
+                    if (valA > valB) return currentSort.direction === 'asc' ? 1 : -1;
+                    return 0;
+                });
+            }
+            outreachTableBody.innerHTML = '';
+             if (assignedFiles.length === 0 && !viewTwo.classList.contains('hidden')) { addSampleTableData(); }
+            [...assignedFiles].forEach(f => {
+                const tr = document.createElement('tr'); let displayDate = 'N/A';
+                if (f.lastModified) { try { displayDate = new Date(f.lastModified).toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }).replace(/\.$/,'').replace(/\. /g,'.'); } catch (e) { /* Keep N/A */ } }
+                tr.innerHTML = ` <td class="p-2 border"><input type="checkbox"/></td> <td class="p-2 border">${f.name || 'N/A'}</td> <td class="p-2 border">${f.folder || 'N/A'}</td> <td class="p-2 border">${displayDate}</td> <td class="p-2 border">${f.lastEditor || 'N/A'}</td> <td class="p-2 border">${f.email || ''}</td> <td class="p-2 border">${f.contact || ''}</td> <td class="p-2 border">${f.fee || ''}</td> `;
+                if (outreachTableBody) { outreachTableBody.append(tr); }
+            });
+            const headers = outreachTable.querySelectorAll('th.sortable');
+            headers.forEach(th => { const indicator = th.querySelector('.sort-indicator'); if (indicator) { indicator.textContent = (th.dataset.sortKey === currentSort.key) ? (currentSort.direction === 'asc' ? ' ▲' : ' ▼') : ''; } });
+            updateStatusCounts(); // Update counts after table is drawn
+         }
+
+        function addSampleTableData() {
+             const sampleData = [ { id: 'link-105', name: 'ㅈㄷㄱㅈㄷㄱ', folder: '리스트업', lastModified: '2025-04-21T14:24:16Z', lastEditor: 'Me', email: '', contact: '', fee: '' }, { id: 'excel-106', name: '24. 자몽', folder: '리스트업', lastModified: '2025-04-21T14:24:15Z', lastEditor: 'Me', email: '', contact: '', fee: '' }, { id: 'excel-107', name: '23. 감귤', folder: '확정섭외', lastModified: '2025-04-21T14:24:21Z', lastEditor: 'Me', email: '', contact: '', fee: '' }, { id: 'excel-100', name: '1. 꽃봄.txt', folder: 'N/A', lastModified: '2025-04-21T13:50:02Z', lastEditor: 'Import', email: '', contact: '', fee: '' }, { id: 'excel-101', name: '1. 꽃봄.txt', folder: 'N/A', lastModified: '2025-04-21T13:50:02Z', lastEditor: 'Import', email: '', contact: '', fee: '' }, { id: 'excel-102', name: '1. 꽃봄.txt', folder: 'N/A', lastModified: '2025-04-21T13:50:02Z', lastEditor: 'Import', email: '', contact: '', fee: '' }, { id: 'excel-103', name: '1. 꽃봄.txt', folder: 'N/A', lastModified: '2025-04-21T13:50:02Z', lastEditor: 'Import', email: '', contact: '', fee: '' }, { id: 'excel-104', name: '1. 꽃봄.txt', folder: 'N/A', lastModified: '2025-04-21T13:50:02Z', lastEditor: 'Import', email: '', contact: '', fee: '' }, { id: 'excel-108', name: '21. 바나나', folder: 'N/A', lastModified: '2025-04-21T14:22:14Z', lastEditor: 'Me', email: '', contact: '', fee: '' }, { id: 'excel-109', name: '22. 딸기', folder: 'N/A', lastModified: '2025-04-21T14:22:28Z', lastEditor: 'Me', email: '', contact: '', fee: '' }, { id: 'excel-110', name: '25. 사과', folder: 'N/A', lastModified: '2025-04-21T14:23:20Z', lastEditor: 'Me', email: '', contact: '', fee: '' }, { id: 'excel-111', name: '27. 포도', folder: 'N/A', lastModified: '2025-04-21T14:24:07Z', lastEditor: 'Me', email: '', contact: '', fee: '' } ];
+             if(assignedFiles.length === 0) { assignedFiles = sampleData; }
+         }
+
+        function upsertAssignedFile(fileId, fileContent, folderName) {
+            const fileNameMatch = fileContent.match(/>(.*?)</); const fileName = fileNameMatch ? fileNameMatch[1] : fileContent;
+            const existingIndex = assignedFiles.findIndex(f => (f.id === fileId) || (f.name === fileName && !f.id && fileId.startsWith('link-')));
+            const fileData = { id: fileId, name: fileName, folder: folderName, lastModified: new Date().toISOString(), lastEditor: 'Me', email: existingIndex > -1 ? assignedFiles[existingIndex].email : '', contact: existingIndex > -1 ? assignedFiles[existingIndex].contact : '', fee: existingIndex > -1 ? assignedFiles[existingIndex].fee : '', };
+            if (existingIndex > -1) { assignedFiles[existingIndex].folder = fileData.folder; assignedFiles[existingIndex].lastModified = fileData.lastModified; assignedFiles[existingIndex].lastEditor = fileData.lastEditor; }
+            else { assignedFiles.push(fileData); }
+            refreshTable(); // Updates table and counts
+        }
+
+        function removeAssignedFile(fileId) { const initialLength = assignedFiles.length; assignedFiles = assignedFiles.filter(f => f.id !== fileId); if (assignedFiles.length < initialLength) { refreshTable(); } } // Updates table and counts
+
+        // ---- Drop Handlers (unchanged logic) ----
+         const handleDropOnFolder = (fileId, fileContent, sourceContainerId, targetFolderElement) => {
+            const targetFolderName = targetFolderElement.dataset.folderName; const sourceContainer = document.getElementById(sourceContainerId); let sourceElement = null;
+            if (sourceContainer) { sourceElement = findFileElementById(sourceContainer, fileId); if (sourceElement) { sourceContainer.removeChild(sourceElement); } }
+            else { console.warn("Drop source container not found:", sourceContainerId); sourceElement = document.querySelector(`[data-file-id="${fileId}"]`); if (sourceElement?.parentElement) { sourceElement.parentElement.removeChild(sourceElement); } else { return; } }
+            removeFileFromFolders(fileId); addFileToFolder(fileId, fileContent, targetFolderName); upsertAssignedFile(fileId, fileContent, targetFolderName); selectFolder(targetFolderElement);
+        };
+        const handleDropOnArrival = (fileId, fileContent, sourceContainerId, targetContainerElement) => {
+            if (sourceContainerId !== 'folderFilesContainer') return; const sourceContainer = document.getElementById(sourceContainerId); let sourceElement = null;
+             if (sourceContainer) { sourceElement = findFileElementById(sourceContainer, fileId); if (sourceElement) { sourceContainer.removeChild(sourceElement); } else { return; } } else { return; }
+            removeFileFromFolders(fileId); removeAssignedFile(fileId); const newElement = createFileElement(fileId, fileContent); const placeholder = arrivalContainer.querySelector('#addArticlePlaceholder');
+            if (placeholder) { arrivalContainer.insertBefore(newElement, placeholder); } else { arrivalContainer.appendChild(newElement); }
+        };
+
+        // ---- Event Listener Setup ----
+        arrivalContainer.querySelectorAll('.fileItem').forEach(enableDrag);
+        folderContainer.querySelectorAll('.folderItem').forEach(folder => { folder.addEventListener('click', () => selectFolder(folder)); enableDrop(folder, handleDropOnFolder); });
+        enableDrop(arrivalContainer, handleDropOnArrival);
+         enableDrop(folderFilesContainer, (fileId, fileContent, sourceContainerId, targetContainerElement) => { const currentSelectedFolderElement = folderContainer.querySelector('.folderItem.selected'); if (currentSelectedFolderElement) { handleDropOnFolder(fileId, fileContent, sourceContainerId, currentSelectedFolderElement); } });
+        outreachTable.querySelectorAll('th.sortable').forEach(th => { th.addEventListener('click', () => { const sortKey = th.dataset.sortKey; if (!sortKey) return; let newDirection = (currentSort.key === sortKey && currentSort.direction === 'asc') ? 'desc' : 'asc'; currentSort.key = sortKey; currentSort.direction = newDirection; refreshTable(); }); });
+
+        // Add listeners for making goals editable
+         statusCountsContainer.querySelectorAll('.status-goal').forEach(span => {
+             span.addEventListener('click', () => makeGoalEditable(span));
+         });
+
+
+        // ---- +원고 추가 Logic (unchanged logic) ----
+        if (addArticlePlaceholder) { addArticlePlaceholder.addEventListener('click', () => { linkInputSection.classList.remove('hidden'); addArticlePlaceholder.classList.add('hidden'); linkFileNameInput.focus(); }); }
+        cancelLinkButton.addEventListener('click', () => { linkInputSection.classList.add('hidden'); const placeholder = arrivalContainer.querySelector('#addArticlePlaceholder'); if (placeholder) { placeholder.classList.remove('hidden'); } linkFileNameInput.value = ''; linkUrlInput.value = ''; });
+        saveLinkButton.addEventListener('click', () => {
+            const name = linkFileNameInput.value.trim(); const url = linkUrlInput.value.trim();
+            if (!name) { alert('파일명은 필수입니다.'); linkFileNameInput.focus(); return; }
+            if (url && !url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('/')) { alert('유효한 URL 형식(http://, https:// 또는 / 로 시작)으로 입력해주세요.'); linkUrlInput.focus(); return; }
+            const fileId = `link-${fileIdCounter++}`; let fileContent = url ? `<a href="${url}" target="_blank" class="underline text-blue-600">${name}</a>` : name;
+            const newElement = createFileElement(fileId, fileContent); upsertAssignedFile(fileId, name, 'N/A'); const placeholder = arrivalContainer.querySelector('#addArticlePlaceholder');
+             if (placeholder) { arrivalContainer.insertBefore(newElement, placeholder); } else { arrivalContainer.appendChild(newElement); }
+            linkFileNameInput.value = ''; linkUrlInput.value = ''; linkInputSection.classList.add('hidden'); if (placeholder) { placeholder.classList.remove('hidden'); }
+        });
+
+        // ---- MEMO (Existing code - unchanged) ----
+        const savedMemo = localStorage.getItem('projectMemo') || '메모 없음';
+        memoTextDisplay.textContent = savedMemo;
+        memoEditBtn.addEventListener('click', () => { memoTextDisplay.classList.add('hidden'); memoEditBtn.classList.add('hidden'); memoTextArea.value = memoTextDisplay.textContent; memoEditSection.classList.remove('hidden'); memoTextArea.focus(); });
+        memoConfirmBtn.addEventListener('click', () => { const txt = memoTextArea.value.trim(); localStorage.setItem('projectMemo', txt); memoTextDisplay.textContent = txt; memoTextDisplay.classList.remove('hidden'); memoEditBtn.classList.remove('hidden'); memoEditSection.classList.add('hidden'); });
+
+        // ---- 리스트 추가 -> Excel import (Modified to use ISO dates) ----
+        listAddBtn.addEventListener('click', () => excelFileInput.click());
+        excelFileInput.addEventListener('change', e => {
+            const file = e.target.files[0]; if (!file) return; const reader = new FileReader();
+            reader.onload = evt => {
+                try {
+                    const wb = XLSX.read(evt.target.result, { type: 'binary' }); const sheet = wb.Sheets[wb.SheetNames[0]]; const rows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
+                    rows.forEach((r, index) => {
+                        const fileId = `excel-${fileIdCounter++}`; const fileName = r['파일명'] || r['Name'] || `Imported ${index + 1}`; let lastModifiedDate = new Date(); const excelDate = r['최종수정날짜'] || r['Last Modified'];
+                         if (excelDate) { if (excelDate instanceof Date) { lastModifiedDate = excelDate; } else { try { const parsed = new Date(String(excelDate).replace(/\./g, '-').replace('오후', 'PM').replace('오전', 'AM')); if (!isNaN(parsed)) lastModifiedDate = parsed; } catch (dateError) { /* Ignore */ } } }
+                        if (!assignedFiles.some(f => f.id === fileId)) { assignedFiles.push({ id: fileId, name: fileName, folder: r['폴더위치'] || r['Folder'] || 'N/A', lastModified: lastModifiedDate.toISOString(), lastEditor: r['마지막작성자'] || 'Import', email: r['메일주소'] || r['Email'] || '', contact: r['연락처'] || r['Contact'] || '', fee: r['원고료'] || r['Fee'] || '' }); }
+                    });
+                    refreshTable(); excelFileInput.value = '';
+                } catch (error) { console.error("Error processing Excel file:", error); alert("엑셀 파일 처리 중 오류가 발생했습니다."); }
+            };
+            reader.onerror = () => { alert("파일을 읽는 중 오류가 발생했습니다."); excelFileInput.value = ''; };
+            reader.readAsBinaryString(file);
+        });
+
+        // ---- Initialization ----
+        function resetProjectData(projectName) {
+             currentProjectName = projectName || ''; // Store current project name
+             assignedFiles = []; // Clear file data
+             // Reinitialize folder contents
+             folderContents = {};
+             Object.values(folderNameMap).forEach(name => { folderContents[name] = []; });
+
+             selectedFolder = document.querySelector('#folderContainer .folderItem.selected')?.dataset.folderName || '광고주';
+             fileIdCounter = 100; currentSort = { key: null, direction: 'asc' };
+             outreachTableBody.innerHTML = ''; folderFilesContainer.innerHTML = '';
+             arrivalContainer.innerHTML = ` <div class="fileItem" data-file-id="2">2번-임블리.txt</div> <div class="fileItem" data-file-id="4">4번-세수하연.txt</div> <div class="fileItem" data-file-id="5">5번-탈라칼라.txt</div> <div id="addArticlePlaceholder"> + 원고 추가 </div>`;
+             const newPlaceholder = document.getElementById('addArticlePlaceholder');
+             if(newPlaceholder) { newPlaceholder.addEventListener('click', () => { linkInputSection.classList.remove('hidden'); newPlaceholder.classList.add('hidden'); linkFileNameInput.focus(); }); }
+             else { console.error("Failed to re-attach listener to addArticlePlaceholder after reset."); }
+             arrivalContainer.querySelectorAll('.fileItem').forEach(enableDrag);
+             linkInputSection.classList.add('hidden'); linkFileNameInput.value = ''; linkUrlInput.value = '';
+             const currentFolderItems = folderContainer.querySelectorAll('.folderItem');
+             currentFolderItems.forEach(f => f.classList.remove('selected'));
+             const defaultSelectedFolder = folderContainer.querySelector(`.folderItem[data-folder-name="${selectedFolder}"]`);
+             if (defaultSelectedFolder) { defaultSelectedFolder.classList.add('selected'); }
+             else if (currentFolderItems.length > 0) { currentFolderItems[0].classList.add('selected'); selectedFolder = currentFolderItems[0].dataset.folderName; }
+             currentFolderNameSpan.textContent = selectedFolder;
+             outreachTable.querySelectorAll('th .sort-indicator').forEach(ind => ind.textContent = '');
+             // Reset status counts and goals visually
+             folderKeys.forEach(key => {
+                 const achievedEl = document.getElementById(`achieved-${key}`);
+                 const goalEl = document.getElementById(`goal-${key}`);
+                 if (achievedEl) achievedEl.textContent = '0';
+                 if (goalEl) goalEl.textContent = '-'; // Reset goal display
+             });
+             // Reset memo
+             const initialMemo = localStorage.getItem('projectMemo') || '메모 없음';
+             memoTextDisplay.textContent = initialMemo; memoTextArea.value = initialMemo;
+        }
+
+        function initializeViewTwoState(projectName) {
+             currentProjectName = projectName || ''; // Ensure project name is set
+             const initialFolder = folderContainer.querySelector('.folderItem.selected');
+             if (initialFolder) { selectFolder(initialFolder); }
+             else { const currentFolderItems = folderContainer.querySelectorAll('.folderItem'); if (currentFolderItems.length > 0) { selectFolder(currentFolderItems[0]); } }
+
+             // Add sample data if view is visible and no specific project loaded yet (or for demo)
+             // This might need adjustment based on how real project data is loaded
+             if (assignedFiles.length === 0 && !viewTwo.classList.contains('hidden')) {
+                 addSampleTableData();
+             }
+             currentSort.key = 'lastModified'; currentSort.direction = 'desc'; // Set initial sort
+
+             loadGoals(currentProjectName); // Load goals for the current project
+             refreshTable(); // Refresh table (applies sort, updates counts)
+
+             arrivalContainer.querySelectorAll('.fileItem').forEach(enableDrag);
+             folderFilesContainer.querySelectorAll('.fileItem').forEach(enableDrag);
+
+              // Re-attach listeners for making goals editable after potential reset
+             statusCountsContainer.querySelectorAll('.status-goal').forEach(span => {
+                 span.removeEventListener('click', makeGoalEditable); // Remove old listener if any
+                 span.addEventListener('click', () => makeGoalEditable(span));
+             });
+        }
+
+        // Initialize if viewTwo is already visible on page load (e.g., during development)
+        if (!viewTwo.classList.contains('hidden')) { initializeViewTwoState('DefaultProject'); } // Use a default name or handle appropriately
+
+      }); // End DOMContentLoaded
+    })();
+  </script>
+</body>
+</html>
